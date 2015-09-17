@@ -2,12 +2,19 @@
 Water meter read
   By Patrik Hermansson
   Sensor for Emoncms network that read a water meter (Bmeters GSD8-RFM).
-  The meter has a wheel with an opening that rotates. 
+  Uses RFM69CW as radio hardware. 
  
   CNY70 reflective optical sensor and IR barrier.
   The CNY70 is mounted over the spinning wheel that detects leaks.
-  The IR barrier is mounted to detect rotations of the wheel 
+  The IR barrier is mounted to detect rotations of the wheel which counts
+  how many liters has floatet through the meter. 
 
+  Latest source can be found at 
+  https://github.com/bphermansson/EmonWaterRead
+
+   Reminder for Github:
+   git commit EmonWaterRead.ino
+   git push origin master
 */
 
 // RF
@@ -18,9 +25,7 @@ ISR(WDT_vect) { Sleepy::watchdogEvent(); }                            // Attache
 #define RF_freq RF12_433MHZ                                              // Frequency of RF69CW module can be RF12_433MHZ, RF12_868MHZ or RF12_915MHZ. You should use the one matching the module you have.
 byte nodeID = 25;                                                // emonTx RFM12B node ID
 const int networkGroup = 210;  
-typedef struct { 
-int temp, power2; 
-} PayloadTX;     // create structure - a neat way of packaging data for RF comms
+typedef struct { int temp, leak, liters; } PayloadTX;    
   PayloadTX emontx; 
 
 // LED
@@ -61,7 +66,7 @@ void setup() {
   pinMode(LEDpin, OUTPUT); 
   digitalWrite(LEDpin,HIGH); 
   
-  // Initial value
+  // Initial values
   irValue = analogRead(irInPin);
   oldirValue = irValue;
   cnyValue = analogRead(irInPin);
@@ -83,11 +88,8 @@ void setup() {
   emontx.temp = temp;
   rf12_sendNow(0, &emontx, sizeof emontx);
   rf12_sendWait(2);
-
   delay(500);
   digitalWrite(LEDpin,LOW); 
-  
-  
 }
 
 void loop() {
@@ -139,7 +141,7 @@ void loop() {
 
   // Time to send data?
   Sendtime = millis();
-  if (Sendtime-lastSendtime >= 3000) { // 3 seconds
+  if (Sendtime-lastSendtime >= 20000) { // 20 seconds
     // Debug
     Serial.println(Sendtime);
     Serial.println("Time to send data");
@@ -151,6 +153,12 @@ void loop() {
     // Get current temp
     sensors.requestTemperatures();
     temp = (sensors.getTempCByIndex(0));     // get inital temperature reading
+    // Prepare data to send
+    emontx.temp = temp;
+    emontx.leak = moving;
+    emontx.liters = liters;
+    rf12_sendNow(0, &emontx, sizeof emontx);
+    rf12_sendWait(2);
     
     // Reset flow indicator and liter counter
     moving = 0;
